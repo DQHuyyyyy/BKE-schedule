@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Theo dõi Google Sheet lịch học của BKE (nguồn dữ liệu thật đứng sau trang
-https://bke.edu.vn/lich/), phát hiện các khóa học có tổ chức OFFLINE tại
-HÀ NỘI mà khoảng ngày diễn ra có rơi vào thứ Bảy/Chủ Nhật, và gửi thông
-báo qua Zalo Bot khi có lịch MỚI (chưa từng thông báo trước đó).
+https://bke.edu.vn/lich/), phát hiện TẤT CẢ các khóa học có tổ chức
+OFFLINE tại HÀ NỘI (không phân biệt ngày trong tuần), và gửi thông báo
+qua Zalo Bot khi có lịch MỚI (chưa từng thông báo trước đó).
 
 Cách chạy thủ công:
     ZALO_BOT_TOKEN=xxx ZALO_CHAT_ID=xxx python3 check_bke_weekend.py
@@ -58,20 +58,10 @@ def parse_vn_date(raw: str):
     return datetime.strptime(raw, "%d/%m/%Y").date()
 
 
-def date_range_has_weekend(start: date, end: date):
-    weekend_days = []
-    d = start
-    while d <= end:
-        if d.weekday() >= 5:  # 5 = Thứ Bảy, 6 = Chủ Nhật
-            weekend_days.append(d)
-        d += timedelta(days=1)
-    return weekend_days
-
-
 # --------------------------------------------------------------------------
-# 2. Lọc các sự kiện: Offline tại Hà Nội + rơi vào cuối tuần + sắp diễn ra
+# 2. Lọc các sự kiện: Offline tại Hà Nội + sắp diễn ra (mọi ngày trong tuần)
 # --------------------------------------------------------------------------
-def find_hanoi_weekend_events(rows, today: date):
+def find_hanoi_events(rows, today: date):
     events = []
     for row in rows:
         location = (row.get("Địa điểm") or "").strip()
@@ -88,11 +78,7 @@ def find_hanoi_weekend_events(rows, today: date):
         end = parse_vn_date(row.get("Đến ngày")) or start
 
         if end < today:
-            continue
-
-        weekend_days = date_range_has_weekend(start, end)
-        if not weekend_days:
-            continue
+            continue  # sự kiện đã qua, bỏ qua
 
         events.append(
             {
@@ -103,7 +89,6 @@ def find_hanoi_weekend_events(rows, today: date):
                 "format": fmt,
                 "start": start.isoformat(),
                 "end": end.isoformat(),
-                "weekend_days": [d.isoformat() for d in weekend_days],
                 "detail_link": (row.get("Chi tiết (link)") or "").strip(),
             }
         )
@@ -152,7 +137,7 @@ def format_date_range(start_iso: str, end_iso: str) -> str:
 
 
 def build_message(new_events):
-    lines = ["🔔 BKE có lịch học cuối tuần tại Hà Nội!", ""]
+    lines = ["🔔 BKE có lịch học mới tại Hà Nội!", ""]
     for e in sorted(new_events, key=lambda x: x["start"]):
         lines.append(f"• {e['title']}" + (f" — {e['speaker']}" if e["speaker"] else ""))
         lines.append(f"   {format_date_range(e['start'], e['end'])}")
@@ -173,9 +158,9 @@ def main():
     chat_id = os.environ.get("ZALO_CHAT_ID")
 
     rows = fetch_schedule_rows()
-    events = find_hanoi_weekend_events(rows, today)
+    events = find_hanoi_events(rows, today)
 
-    print(f"[{today.isoformat()}] Tìm thấy {len(events)} khóa học Offline tại Hà Nội, sắp tới, rơi vào cuối tuần:")
+    print(f"[{today.isoformat()}] Tìm thấy {len(events)} khóa học Offline tại Hà Nội, sắp tới:")
     for e in sorted(events, key=lambda x: x["start"]):
         print(f"  - {e['title']} | {e['start']} -> {e['end']} (id={e['id']})")
 
